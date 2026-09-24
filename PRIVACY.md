@@ -24,10 +24,14 @@ On Windows this local data directory is
 - No chat log or interaction history — nothing is persisted beyond `config.json` and `skills.json`.
 - No account, no auth, no cloud sync.
 - No data is sold, shared, or transmitted to Anthropic, Helveticlabs, or any third party.
+  The one request that reaches a third party at all is the update check you start
+  yourself, and it carries nothing but the request (see below).
 
-## The only network connection
+## Network connections
 
-The only outbound connection JarvOS's Rust backend will make is to a **local** Ollama
+Apart from an update check that you start yourself (see
+[Update check](#update-check-only-when-you-ask)), the only outbound connection
+JarvOS's Rust backend will make is to a **local** Ollama
 instance for LLM intent resolution. This is enforced in code, not just policy: every
 Ollama request (`ollama_get` / `ollama_post` in `src-tauri/src/main.rs`) is routed
 through `ensure_local`, which rejects any base URL that doesn't start with
@@ -47,6 +51,18 @@ fn ensure_local(base_url: &str) -> Result<(), String> {
 No other Tauri command makes a network call. OS actions (`dispatch_action`) launch
 local apps, open URLs you configured, or run scripts you registered — JarvOS doesn't
 call out on your behalf beyond what a skill explicitly does.
+
+## Update check (only when you ask)
+
+JarvOS never checks for updates on its own. When you press **Check for updates** in
+Settings, it fetches one file,
+`https://github.com/makr07-sec/jarvos-downloads/releases/latest/download/latest.json`,
+and, if you then choose to install, the matching installer from the same public
+repository. Both are ordinary, unauthenticated downloads of static files. They send no
+data about you, but like any web request they reveal your IP address to GitHub, which
+hosts those files (release files are served from `github.com` and
+`release-assets.githubusercontent.com`). The manifest's entries are signed, and JarvOS
+refuses an update whose signature does not verify against the key built into the app.
 
 ## A note on speech recognition
 
