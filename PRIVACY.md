@@ -14,7 +14,7 @@ enforced in code.
 | **SignalForge API key** (optional) | Only if you paste one in Settings. Used as the bearer token for the SignalForge inbox and notes search requests; never shown again, never logged, never part of backups. | A separate local file (`signalforge.json`) in the data directory, readable only by your user (mode 0600 on macOS/Linux; the per-user folder on Windows). |
 | **Anthropic API key** (optional) | Only if you paste one in Settings → Claude. Sent as the API key of the Claude request; never shown again, never logged, never part of backups. | A separate local file (`anthropic.json`) in the data directory, readable only by your user (as above). |
 | **Skills** (your registered `launch_app` / `open_url` / `run_script` actions) | Read and written locally. | A single local JSON file (`skills.json`) alongside `config.json`. |
-| **Start at sign-in** (Windows, optional) | Only if you tick it under Settings → Activation: one entry in your Windows account's start-up list that starts JarvOS when you sign in. Nothing is sent anywhere. | The `JarvOS` value under `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` (`src-tauri/src/autostart.rs`), removed when you untick it. |
+| **Start at sign-in** (Windows, optional) | Only if you tick it under Settings → Activation: one entry in your Windows account's start-up list that starts JarvOS when you sign in. Nothing is sent anywhere. | The `JarvOS` value under `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` (`src-tauri/src/autostart.rs`), removed when you untick it or uninstall JarvOS. |
 | **Speech models** (whisper.cpp model, wake-word models) | Part of the app, not your data: they ship inside the installer and are read from the install folder. JarvOS downloads no models at runtime. | The install folder (`whisper\`, `wakeword\`), removed on uninstall. |
 | **Spoken replies (TTS)** | Synthesized via the OS/webview speech synthesizer, restricted to on-device voices only; falls back to an optional local Piper engine only when no offline OS voice exists at all (see below). | Not persisted. |
 
@@ -42,20 +42,27 @@ Apart from the update check (see [Update check](#update-check)), the opt-in Sign
 and notes search, the opt-in Claude connection and the custom connection described below, the only outbound connection
 JarvOS's Rust backend will make is to a **local** Ollama
 instance for LLM intent resolution. This is enforced in code, not just policy: every
-Ollama request (`ollama_get` / `ollama_post` in `src-tauri/src/main.rs`) is routed
-through `ensure_local`, which rejects any base URL that doesn't start with
-`http://127.0.0.1`, `http://localhost`, or `http://[::1]` — the request is never sent
+Ollama request (`ollama_get` / `ollama_post` in `src-tauri/src/main.rs`, `ollama_pull` in
+`src-tauri/src/pull.rs`) is routed
+through `ensure_local`, which rejects any base URL whose host isn't
+`127.0.0.1`, `localhost` or `[::1]` over `http://` — the request is never sent
 if the check fails.
 
 ```rust
 // src-tauri/src/main.rs
 fn ensure_local(base_url: &str) -> Result<(), String> {
-    let ok = ["http://127.0.0.1", "http://localhost", "http://[::1]"]
-        .iter()
-        .any(|p| base_url.starts_with(p));
-    if ok { Ok(()) } else { Err("JarvOS only talks to a local model (localhost).".into()) }
+    let local = reqwest::Url::parse(base_url).is_ok_and(|u| {
+        u.scheme() == "http" && matches!(u.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"))
+    });
+    if local { Ok(()) } else { Err("JarvOS only talks to a local model (localhost).".into()) }
 }
 ```
+
+**Downloading a model.** **Download Llama 3.2** in the first-start guide and in Settings → Model
+asks your local Ollama to download that model; JarvOS sends it only the model name. Ollama then
+fetches the model from its own model library on the internet, as `ollama pull` does; that
+connection is Ollama's, under [Ollama's terms](https://ollama.com). **Get Ollama** opens
+`https://ollama.com/download` in your browser.
 
 Two things here are opt-in and local-first. The **rewrite-selection hotkey** copies
 the text you selected, sends it to the same local Ollama model, pastes the result back and
